@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mini-SIEM Dashboard</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: #e5e7eb;
+      padding: 20px;
+    }
+
+    h1 {
+      color: #38bdf8;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      margin-top: 30px;
+    }
+
+    select {
+      font-size: 14px;
+      padding: 6px 10px;
+      margin-right: 10px;
+      border-radius: 4px;
+    }
+
+    hr {
+      margin: 20px 0;
+      border: 1px solid #334155;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    th, td {
+      border: 1px solid #334155;
+      padding: 8px;
+      text-align: left;
+    }
+
+    th {
+      background: #1e293b;
+    }
+
+    .INFO {
+      color: #22c55e;
+    }
+
+    .WARNING {
+      color: #facc15;
+    }
+
+    .CRITICAL {
+      color: #f87171;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+
+<h1>🔐 Mini-SIEM Dashboard</h1>
+
+<label for="severityFilter">Filter Severity:</label>
+<select id="severityFilter">
+  <option value="ALL">All</option>
+  <option value="INFO">INFO</option>
+  <option value="WARNING">WARNING</option>
+  <option value="CRITICAL">CRITICAL</option>
+</select>
+
+<select id="actionMenu">
+  <option value="">Actions</option>
+  <option value="copy">📋 Copy Logs</option>
+  <option value="csv">⬇️ Download CSV</option>
+</select>
+
+
+<hr>
+
+<h2>🚨 Alerts</h2>
+<table id="alertsTable">
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>Type</th>
+      <th>Message</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<h2>📄 Logs</h2>
+<table id="logsTable">
+  <thead>
+    <tr>
+      <th>Time</th>
+      <th>Source</th>
+      <th>Message</th>
+      <th>Severity</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script>
+/* ---------------- GLOBAL STATE ---------------- */
+let allLogs = [];
+
+/* ---------------- LOAD LOGS ---------------- */
+async function loadLogs() {
+  const res = await fetch("http://127.0.0.1:8000/logs");
+  const data = await res.json();
+  allLogs = data.logs;
+  renderLogs();
+}
+
+/* ---------------- RENDER LOGS ---------------- */
+function renderLogs() {
+  const filter = document.getElementById("severityFilter").value;
+  const tbody = document.querySelector("#logsTable tbody");
+  tbody.innerHTML = "";
+
+  let logsToShow = allLogs;
+  if (filter !== "ALL") {
+    logsToShow = allLogs.filter(log => log.severity === filter);
+  }
+
+  logsToShow.slice().reverse().forEach(log => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${log.timestamp}</td>
+      <td>${log.source}</td>
+      <td>${log.message}</td>
+      <td class="${log.severity}">${log.severity}</td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+/* ---------------- COPY LOGS ---------------- */
+/* ---------------- COPY LOGS ---------------- */
+function copyLogsToClipboard() {
+  const filter = document.getElementById("severityFilter").value;
+  let logsToCopy = allLogs;
+
+  if (filter !== "ALL") {
+    logsToCopy = allLogs.filter(log => log.severity === filter);
+  }
+
+  if (logsToCopy.length === 0) {
+    alert("No logs to copy");
+    return;
+  }
+
+  let text = "";
+  logsToCopy.forEach(log => {
+    text += `[${log.timestamp}] ${log.source} - ${log.message} - ${log.severity}\n`;
+  });
+
+  navigator.clipboard.writeText(text)
+    .then(() => alert("Logs copied to clipboard"))
+    .catch(() => alert("Clipboard permission denied"));
+}
+
+/* ---------------- DOWNLOAD CSV ---------------- */
+function downloadLogsAsCSV() {
+  const filter = document.getElementById("severityFilter").value;
+  let logsToExport = allLogs;
+
+  if (filter !== "ALL") {
+    logsToExport = allLogs.filter(log => log.severity === filter);
+  }
+
+  if (logsToExport.length === 0) {
+    alert("No logs to download");
+    return;
+  }
+
+  let csv = "timestamp,source,message,severity\n";
+
+  logsToExport.forEach(log => {
+    const row = `"${log.timestamp}","${log.source}","${log.message.replace(/"/g, '""')}","${log.severity}"`;
+    csv += row + "\n";
+  });
+
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "logs.csv";
+  document.body.appendChild(a);
+  a.click();
+
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+async function loadAlerts() {
+  const res = await fetch("http://127.0.0.1:8000/alerts");
+  const data = await res.json();
+  const tbody = document.querySelector("#alertsTable tbody");
+  tbody.innerHTML = "";
+
+  data.alerts.slice().reverse().forEach(alert => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${alert.timestamp}</td>
+      <td>${alert.type}</td>
+      <td>${alert.message}</td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+/* ---------------- EVENTS ---------------- */
+document.getElementById("severityFilter").addEventListener("change", renderLogs);
+
+document.getElementById("actionMenu").addEventListener("change", function () {
+  if (this.value === "copy") {
+    copyLogsToClipboard();
+  }
+
+  if (this.value === "csv") {
+    downloadLogsAsCSV();
+  }
+
+  this.value = "";
+});
+
+/* ---------------- INIT ---------------- */
+loadLogs();
+loadAlerts();
+
+setInterval(() => {
+  loadLogs();
+  loadAlerts();
+}, 5000);
+</script>
+
+</body>
+</html>
